@@ -17,6 +17,18 @@ export async function addExpense(expenseData) {
   return response.json();
 }
 
+export async function updateExpense(id, expenseData) {
+  const response = await fetch(`${API_URL}${id}/`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(expenseData),
+  });
+
+  return response.json();
+}
+
 export async function deleteExpense(id) {
   const response = await fetch(`${API_URL}${id}/`, {
     method: "DELETE",
