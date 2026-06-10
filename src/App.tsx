@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  categoryBreakdown,
   navigationItems,
   roommates as dummy,
   summaryCards,
@@ -40,11 +39,43 @@ const App = () => {
     date: '',
   });
 
-  const progressPercent = 60;
-
   const totalSpent = backendExpenses.reduce((total, expense) => {
     return total + Number(expense.amount);
   }, 0);
+
+  const monthlyBudget = 10000;
+
+  const budgetUsedPercent = Math.min(
+    (totalSpent / monthlyBudget) * 100,
+    100
+  ).toFixed(0);
+
+  const remainingBudget = monthlyBudget - totalSpent;
+
+  const dynamicCategoryBreakdown = Object.values(
+    backendExpenses.reduce((acc, expense) => {
+      const category = expense.category || 'Other';
+      const amount = Number(expense.amount);
+
+      if (!acc[category]) {
+        acc[category] = {
+          category,
+          amount: 0,
+          color: '#f6c66f',
+        };
+      }
+
+      acc[category].amount += amount;
+      return acc;
+    }, {} as Record<string, { category: string; amount: number; color: string }>)
+  ).map((item) => ({
+    ...item,
+    amountText: `₹ ${item.amount.toFixed(2)}`,
+    percent:
+      totalSpent > 0
+        ? `${((item.amount / totalSpent) * 100).toFixed(0)}%`
+        : '0%',
+  }));
 
   useEffect(() => {
     getExpenses().then((data) => setBackendExpenses(data));
@@ -244,12 +275,24 @@ const App = () => {
                 <h2>{card.title}</h2>
                 <span className="card-chip" style={{ background: card.accent }} />
               </div>
+
               <p className="summary-value">
-                {card.title === 'Total Expenses' || card.title === 'Total Spent'
+                {card.title === 'Total Balance'
+                  ? `₹ ${remainingBudget.toFixed(2)}`
+                  : card.title === 'Total Expenses' || card.title === 'Total Spent'
                   ? `₹ ${totalSpent.toFixed(2)}`
+                  : card.title === 'Monthly Budget'
+                  ? `₹ ${monthlyBudget.toFixed(2)}`
                   : card.value}
               </p>
-              <p className="summary-note">{card.subtitle}</p>
+
+              <p className="summary-note">
+                {card.title === 'Monthly Budget'
+                  ? `${budgetUsedPercent}% used`
+                  : card.title === 'Total Balance'
+                  ? 'remaining from budget'
+                  : card.subtitle}
+              </p>
             </motion.article>
           ))}
         </section>
@@ -329,12 +372,12 @@ const App = () => {
               </div>
 
               <div className="breakdown-list">
-                {categoryBreakdown.map((item) => (
+                {dynamicCategoryBreakdown.map((item) => (
                   <div key={item.category} className="breakdown-row">
                     <span className="breakdown-dot" style={{ background: item.color }} />
                     <div>
                       <p>{item.category}</p>
-                      <small>{item.amount}</small>
+                      <small>{item.amountText}</small>
                     </div>
                     <span>{item.percent}</span>
                   </div>
@@ -350,11 +393,12 @@ const App = () => {
 
             <div className="budget-card">
               <div className="budget-ring">
-                <div className="ring-text">{progressPercent}%<span>Used</span></div>
+                <div className="ring-text">{budgetUsedPercent}%<span>Used</span></div>
               </div>
 
               <div className="budget-details">
-                <p><strong>₹ {totalSpent.toFixed(2)}</strong> of ₹ 10,000.00</p>
+                <p><strong>₹ {totalSpent.toFixed(2)}</strong> of ₹ {monthlyBudget.toFixed(2)}</p>
+                <p>Remaining: <strong>₹ {remainingBudget.toFixed(2)}</strong></p>
                 <button className="primary-button">Manage Budget</button>
               </div>
             </div>
@@ -397,7 +441,7 @@ const App = () => {
             <div className="insight-icon">🧠</div>
             <div>
               <p className="insight-title">AI Insight</p>
-              <p>Your total recorded spending is ₹ {totalSpent.toFixed(2)}. Keep tracking daily to stay inside budget.</p>
+              <p>Your total recorded spending is ₹ {totalSpent.toFixed(2)}. You have ₹ {remainingBudget.toFixed(2)} remaining from your monthly budget.</p>
             </div>
           </div>
 
