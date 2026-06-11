@@ -19,6 +19,16 @@ type Expense = {
   date?: string;
 };
 
+type SplitRecord = {
+  id: number;
+  title: string;
+  amount: number;
+  paidBy: string;
+  participants: string[];
+  perPerson: number;
+  date: string;
+};
+
 const navItems = navigationItems;
 
 const SidebarIcon = ({ label }: { label: string }) => {
@@ -47,6 +57,18 @@ const App = () => {
     return Number(localStorage.getItem('monthlyBudget')) || 10000;
   });
 
+  const [splits, setSplits] = useState<SplitRecord[]>(() => {
+    const savedSplits = localStorage.getItem('splitRecords');
+    return savedSplits ? JSON.parse(savedSplits) : [];
+  });
+
+  const [splitForm, setSplitForm] = useState({
+    title: '',
+    amount: '',
+    paidBy: '',
+    participants: '',
+  });
+
   const [formData, setFormData] = useState({
     title: '',
     amount: '',
@@ -62,7 +84,6 @@ const App = () => {
 
   const budgetUsedPercent = Math.min((totalSpent / monthlyBudget) * 100, 100).toFixed(0);
   const remainingBudget = monthlyBudget - totalSpent;
-
   const totalTransactions = backendExpenses.length;
 
   const highestExpense =
@@ -114,9 +135,25 @@ const App = () => {
     percent: totalSpent > 0 ? `${((item.amount / totalSpent) * 100).toFixed(0)}%` : '0%',
   }));
 
+  const debtSummary = splits.flatMap((split) =>
+    split.participants
+      .filter((person) => person.toLowerCase() !== split.paidBy.toLowerCase())
+      .map((person) => ({
+        id: `${split.id}-${person}`,
+        person,
+        paidBy: split.paidBy,
+        amount: split.perPerson,
+        title: split.title,
+      }))
+  );
+
   useEffect(() => {
     getExpenses().then((data: Expense[]) => setBackendExpenses(data));
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('splitRecords', JSON.stringify(splits));
+  }, [splits]);
 
   const resetForm = () => {
     setFormData({
@@ -173,6 +210,48 @@ const App = () => {
   const handleBudgetSave = () => {
     localStorage.setItem('monthlyBudget', String(monthlyBudget));
     alert('Budget saved successfully!');
+  };
+
+  const handleSplitSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const participants = splitForm.participants
+      .split(',')
+      .map((person) => person.trim())
+      .filter(Boolean);
+
+    if (!splitForm.title || !splitForm.amount || !splitForm.paidBy || participants.length === 0) {
+      alert('Please fill all split details.');
+      return;
+    }
+
+    const amount = Number(splitForm.amount);
+    const perPerson = amount / participants.length;
+
+    const newSplit: SplitRecord = {
+      id: Date.now(),
+      title: splitForm.title,
+      amount,
+      paidBy: splitForm.paidBy,
+      participants,
+      perPerson,
+      date: new Date().toISOString().slice(0, 10),
+    };
+
+    setSplits([newSplit, ...splits]);
+
+    setSplitForm({
+      title: '',
+      amount: '',
+      paidBy: '',
+      participants: '',
+    });
+
+    setActiveItem('Debts & Dues');
+  };
+
+  const handleClearSplit = (id: number) => {
+    setSplits(splits.filter((split) => split.id !== id));
   };
 
   const { linePoints, fillPath } = useMemo(() => {
@@ -530,16 +609,8 @@ const App = () => {
                   <div className="budget-details">
                     <p><strong>₹ {totalSpent.toFixed(2)}</strong> of ₹ {monthlyBudget.toFixed(2)}</p>
                     <p>Remaining: <strong>₹ {remainingBudget.toFixed(2)}</strong></p>
-
-                    <input
-                      type="number"
-                      value={monthlyBudget}
-                      onChange={(e) => setMonthlyBudget(Number(e.target.value))}
-                      placeholder="Monthly Budget"
-                    />
-
-                    <button className="primary-button" onClick={handleBudgetSave}>
-                      Save Budget
+                    <button className="primary-button" onClick={() => setActiveItem('Budget')}>
+                      Manage Budget
                     </button>
                   </div>
                 </div>
@@ -548,31 +619,55 @@ const App = () => {
               <section className="panel panel-who">
                 <div className="panel-header">
                   <h3>Who Owes You</h3>
-                  <a className="link-button">View All</a>
+                  <button className="link-button" onClick={() => setActiveItem('Debts & Dues')}>
+                    View All
+                  </button>
                 </div>
 
                 <div className="list-card">
-                  {dummy.map((member, index) => (
-                    <motion.div
-                      key={member.name}
-                      className="debt-item"
-                      variants={listItemVariant}
-                      initial="hidden"
-                      animate="visible"
-                      transition={{ duration: 0.35, delay: index * 0.06 }}
-                    >
-                      <div className="profile-circle" style={{ background: member.color }}>
-                        {member.initials}
-                      </div>
+                  {debtSummary.length === 0 ? (
+                    dummy.map((member, index) => (
+                      <motion.div
+                        key={member.name}
+                        className="debt-item"
+                        variants={listItemVariant}
+                        initial="hidden"
+                        animate="visible"
+                        transition={{ duration: 0.35, delay: index * 0.06 }}
+                      >
+                        <div className="profile-circle" style={{ background: member.color }}>
+                          {member.initials}
+                        </div>
 
-                      <div>
-                        <p>{member.name}</p>
-                        <small>{member.status}</small>
-                      </div>
+                        <div>
+                          <p>{member.name}</p>
+                          <small>{member.status}</small>
+                        </div>
 
-                      <strong>{member.amount}</strong>
-                    </motion.div>
-                  ))}
+                        <strong>{member.amount}</strong>
+                      </motion.div>
+                    ))
+                  ) : (
+                    debtSummary.slice(0, 3).map((debt, index) => (
+                      <motion.div
+                        key={debt.id}
+                        className="debt-item"
+                        variants={listItemVariant}
+                        initial="hidden"
+                        animate="visible"
+                        transition={{ duration: 0.35, delay: index * 0.06 }}
+                      >
+                        <div className="profile-circle">{debt.person[0]}</div>
+
+                        <div>
+                          <p>{debt.person}</p>
+                          <small>owes {debt.paidBy} for {debt.title}</small>
+                        </div>
+
+                        <strong>₹ {debt.amount.toFixed(2)}</strong>
+                      </motion.div>
+                    ))
+                  )}
                 </div>
               </section>
             </section>
@@ -588,18 +683,15 @@ const App = () => {
                 </div>
               </div>
 
-              <button className="secondary-button">View Suggestions</button>
+              <button className="secondary-button" onClick={() => setActiveItem('Analytics')}>
+                View Suggestions
+              </button>
             </section>
           </>
         )}
 
         {activeItem === 'Expenses' && (
-          <motion.section
-            className="panel"
-            initial={{ opacity: 0, y: 26 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: 'easeOut' }}
-          >
+          <motion.section className="panel" initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }}>
             <div className="panel-header">
               <div>
                 <h3>All Expenses</h3>
@@ -667,6 +759,235 @@ const App = () => {
                   </motion.div>
                 ))
               )}
+            </div>
+          </motion.section>
+        )}
+
+        {activeItem === 'Budget' && (
+          <motion.section className="panel" initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-header">
+              <div>
+                <h3>Budget Management</h3>
+                <p className="panel-subtitle">Set your monthly spending limit.</p>
+              </div>
+            </div>
+
+            <div className="budget-card">
+              <div className="budget-ring">
+                <div className="ring-text">{budgetUsedPercent}%<span>Used</span></div>
+              </div>
+
+              <div className="budget-details">
+                <input
+                  type="number"
+                  value={monthlyBudget}
+                  onChange={(e) => setMonthlyBudget(Number(e.target.value))}
+                  placeholder="Monthly Budget"
+                />
+
+                <p>Total Spent: <strong>₹ {totalSpent.toFixed(2)}</strong></p>
+                <p>Remaining: <strong>₹ {remainingBudget.toFixed(2)}</strong></p>
+
+                <button className="primary-button" onClick={handleBudgetSave}>
+                  Save Budget
+                </button>
+              </div>
+            </div>
+          </motion.section>
+        )}
+
+        {activeItem === 'Split Expense' && (
+          <motion.form className="panel add-expense-panel" onSubmit={handleSplitSubmit} initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-header">
+              <div>
+                <h3>Split Expense</h3>
+                <p className="panel-subtitle">Split hostel expenses with roommates.</p>
+              </div>
+            </div>
+
+            <input
+              type="text"
+              placeholder="Expense title"
+              value={splitForm.title}
+              onChange={(e) => setSplitForm({ ...splitForm, title: e.target.value })}
+              required
+            />
+
+            <div className="form-grid">
+              <input
+                type="number"
+                placeholder="Total amount"
+                value={splitForm.amount}
+                onChange={(e) => setSplitForm({ ...splitForm, amount: e.target.value })}
+                required
+              />
+
+              <input
+                type="text"
+                placeholder="Paid by"
+                value={splitForm.paidBy}
+                onChange={(e) => setSplitForm({ ...splitForm, paidBy: e.target.value })}
+                required
+              />
+            </div>
+
+            <input
+              type="text"
+              placeholder="Participants comma separated, e.g. Argav, Rohit, Aman"
+              value={splitForm.participants}
+              onChange={(e) => setSplitForm({ ...splitForm, participants: e.target.value })}
+              required
+            />
+
+            <button className="primary-button" type="submit">
+              Split Now
+            </button>
+          </motion.form>
+        )}
+
+        {activeItem === 'Debts & Dues' && (
+          <motion.section className="panel" initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-header">
+              <div>
+                <h3>Debts & Dues</h3>
+                <p className="panel-subtitle">Track who owes whom after splitting expenses.</p>
+              </div>
+
+              <button className="primary-button" onClick={() => setActiveItem('Split Expense')}>
+                New Split
+              </button>
+            </div>
+
+            <div className="list-card">
+              {debtSummary.length === 0 ? (
+                <p className="panel-subtitle">No split dues yet. Create a split expense first.</p>
+              ) : (
+                debtSummary.map((debt, index) => (
+                  <motion.div
+                    key={debt.id}
+                    className="debt-item"
+                    variants={listItemVariant}
+                    initial="hidden"
+                    animate="visible"
+                    transition={{ duration: 0.35, delay: index * 0.04 }}
+                  >
+                    <div className="profile-circle">{debt.person[0]}</div>
+
+                    <div>
+                      <p>{debt.person} owes {debt.paidBy}</p>
+                      <small>{debt.title}</small>
+                    </div>
+
+                    <strong>₹ {debt.amount.toFixed(2)}</strong>
+                  </motion.div>
+                ))
+              )}
+            </div>
+
+            <div className="list-card">
+              {splits.map((split) => (
+                <div key={split.id} className="expense-item">
+                  <div>
+                    <p className="expense-title">{split.title}</p>
+                    <p className="expense-date">
+                      Paid by {split.paidBy} • ₹ {split.amount.toFixed(2)} • {split.participants.length} people
+                    </p>
+                  </div>
+
+                  <button className="danger-button" onClick={() => handleClearSplit(split.id)}>
+                    Mark Settled
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.section>
+        )}
+
+        {activeItem === 'Analytics' && (
+          <motion.section className="panel" initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-header">
+              <div>
+                <h3>Analytics</h3>
+                <p className="panel-subtitle">Understand your spending behavior.</p>
+              </div>
+            </div>
+
+            <section className="summary-grid">
+              <article className="summary-card">
+                <h2>Total Spent</h2>
+                <p className="summary-value">₹ {totalSpent.toFixed(2)}</p>
+                <p className="summary-note">all expenses combined</p>
+              </article>
+
+              <article className="summary-card">
+                <h2>Average Expense</h2>
+                <p className="summary-value">₹ {averageExpense.toFixed(2)}</p>
+                <p className="summary-note">per transaction</p>
+              </article>
+
+              <article className="summary-card">
+                <h2>Budget Used</h2>
+                <p className="summary-value">{budgetUsedPercent}%</p>
+                <p className="summary-note">of monthly budget</p>
+              </article>
+            </section>
+
+            <div className="breakdown-list">
+              {dynamicCategoryBreakdown.map((item) => (
+                <div key={item.category} className="breakdown-row">
+                  <span className="breakdown-dot" style={{ background: item.color }} />
+                  <div>
+                    <p>{item.category}</p>
+                    <small>{item.amountText}</small>
+                  </div>
+                  <span>{item.percent}</span>
+                </div>
+              ))}
+            </div>
+          </motion.section>
+        )}
+
+        {activeItem === 'Reports' && (
+          <motion.section className="panel" initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-header">
+              <div>
+                <h3>Reports</h3>
+                <p className="panel-subtitle">Quick financial summary of your hostel expenses.</p>
+              </div>
+            </div>
+
+            <div className="list-card">
+              <div className="expense-item">
+                <div>
+                  <p className="expense-title">Monthly Budget</p>
+                  <p className="expense-date">Your current limit</p>
+                </div>
+                <strong>₹ {monthlyBudget.toFixed(2)}</strong>
+              </div>
+
+              <div className="expense-item">
+                <div>
+                  <p className="expense-title">Total Spent</p>
+                  <p className="expense-date">Backend recorded expenses</p>
+                </div>
+                <strong>₹ {totalSpent.toFixed(2)}</strong>
+              </div>
+
+              <div className="expense-item">
+                <div>
+                  <p className="expense-title">Remaining Balance</p>
+                  <p className="expense-date">Budget left</p>
+                </div>
+                <strong>₹ {remainingBudget.toFixed(2)}</strong>
+              </div>
+
+              <div className="expense-item">
+                <div>
+                  <p className="expense-title">Split Records</p>
+                  <p className="expense-date">Roommate splits created</p>
+                </div>
+                <strong>{splits.length}</strong>
+              </div>
             </div>
           </motion.section>
         )}
