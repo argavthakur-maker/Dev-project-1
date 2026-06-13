@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   navigationItems,
@@ -7,7 +7,16 @@ import {
   spendingOverview,
 } from './data/mockData';
 
-import { getExpenses, addExpense, deleteExpense, updateExpense } from './services/api';
+import {
+  getExpenses,
+  addExpense,
+  deleteExpense,
+  updateExpense,
+  loginUser,
+  signupUser,
+  logoutUser,
+  isLoggedIn,
+} from './services/api';
 
 type Expense = {
   id: number;
@@ -27,6 +36,14 @@ type SplitRecord = {
   participants: string[];
   perPerson: number;
   date: string;
+};
+
+type AuthMode = 'login' | 'signup';
+
+type AuthForm = {
+  username: string;
+  email: string;
+  password: string;
 };
 
 const navItems = navigationItems;
@@ -52,6 +69,14 @@ const App = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [authenticated, setAuthenticated] = useState(() => isLoggedIn());
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [authError, setAuthError] = useState('');
+  const [authForm, setAuthForm] = useState<AuthForm>({
+    username: '',
+    email: '',
+    password: '',
+  });
 
   const [monthlyBudget, setMonthlyBudget] = useState(() => {
     return Number(localStorage.getItem('monthlyBudget')) || 10000;
@@ -254,6 +279,42 @@ const App = () => {
     setSplits(splits.filter((split) => split.id !== id));
   };
 
+  const handleAuthSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setAuthError('');
+
+    try {
+      if (authMode === 'signup') {
+        await signupUser(authForm);
+        await loginUser({
+          username: authForm.username,
+          password: authForm.password,
+        });
+      } else {
+        await loginUser({
+          username: authForm.username,
+          password: authForm.password,
+        });
+      }
+
+      setAuthenticated(true);
+      setAuthForm({
+        username: '',
+        email: '',
+        password: '',
+      });
+      setActiveItem('Dashboard');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Authentication failed');
+    }
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    setAuthenticated(false);
+    setActiveItem('Dashboard');
+  };
+
   const { linePoints, fillPath } = useMemo(() => {
     const { points, max } = spendingOverview;
 
@@ -269,6 +330,114 @@ const App = () => {
   }, []);
 
   const expenseList = activeItem === 'Expenses' ? filteredExpenses : filteredExpenses.slice(0, 5);
+
+  if (!authenticated) {
+  return (
+    <motion.div
+      className="app-shell auth-shell"
+      style={{
+        minHeight: '100vh',
+        width: '100vw',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '40px 20px',
+      }}
+      initial={{ opacity: 0, y: 28 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.7, ease: 'easeOut' }}
+    >
+      <motion.section
+        className="panel auth-panel"
+        style={{
+          width: '100%',
+          maxWidth: '460px',
+          margin: '0 auto',
+          padding: '36px',
+          borderRadius: '32px',
+        }}
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+      >
+          <div className="brand-card">
+            <div className="brand-icon">H</div>
+            <div>
+              <p className="brand-label">Hosteler&apos;s</p>
+              <p className="brand-subtitle">Expense Manager</p>
+            </div>
+          </div>
+
+          <div className="panel-header">
+            <div>
+              <h3>{authMode === 'login' ? 'Welcome Back' : 'Create Account'}</h3>
+              <p className="panel-subtitle">
+                {authMode === 'login'
+                  ? 'Login to manage your hostel expenses.'
+                  : 'Signup and start tracking your hostel money.'}
+              </p>
+            </div>
+          </div>
+
+          <form className="add-expense-panel" onSubmit={handleAuthSubmit}>
+            <label className="input-field">
+              <input
+                type="text"
+                placeholder=" "
+                value={authForm.username}
+                onChange={(e) => setAuthForm({ ...authForm, username: e.target.value })}
+                required
+              />
+              <span>Username</span>
+            </label>
+
+            {authMode === 'signup' && (
+              <label className="input-field">
+                <input
+                  type="email"
+                  placeholder=" "
+                  value={authForm.email}
+                  onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                  required
+                />
+                <span>Email</span>
+              </label>
+            )}
+
+            <label className="input-field">
+              <input
+                type="password"
+                placeholder=" "
+                value={authForm.password}
+                onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                required
+              />
+              <span>Password</span>
+            </label>
+
+            {authError && <p className="panel-subtitle">{authError}</p>}
+
+            <button className="primary-button" type="submit">
+              {authMode === 'login' ? 'Login' : 'Signup'}
+            </button>
+
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => {
+                setAuthError('');
+                setAuthMode(authMode === 'login' ? 'signup' : 'login');
+              }}
+            >
+              {authMode === 'login'
+                ? 'New here? Create an account'
+                : 'Already have an account? Login'}
+            </button>
+          </form>
+        </motion.section>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -317,6 +486,10 @@ const App = () => {
           </div>
           <button className="pro-button">Upgrade Now</button>
         </div>
+
+        <button className="danger-button" onClick={handleLogout}>
+          Logout
+        </button>
       </motion.aside>
 
       <main className="workspace">
@@ -386,54 +559,73 @@ const App = () => {
                 )}
               </div>
 
-              <input
-                type="text"
-                placeholder="Title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
-              />
-
-              <div className="form-grid">
-                <input
-                  type="number"
-                  placeholder="Amount"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                  required
-                />
-
+              <label className="input-field">
                 <input
                   type="text"
-                  placeholder="Category"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  placeholder=" "
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   required
                 />
+                <span>Title</span>
+              </label>
+
+              <div className="form-grid">
+                <label className="input-field">
+                  <input
+                    type="number"
+                    placeholder=" "
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    required
+                  />
+                  <span>Amount</span>
+                </label>
+
+                <label className="input-field">
+                  <input
+                    type="text"
+                    placeholder=" "
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    required
+                  />
+                  <span>Category</span>
+                </label>
               </div>
 
               <div className="form-grid">
-                <input
-                  type="text"
-                  placeholder="Payment Method"
-                  value={formData.payment_method}
-                  onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
-                  required
-                />
+                <label className="input-field">
+                  <input
+                    type="text"
+                    placeholder=" "
+                    value={formData.payment_method}
+                    onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
+                    required
+                  />
+                  <span>Payment Method</span>
+                </label>
 
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  required
-                />
+                <label className="input-field">
+                  <input
+                    type="date"
+                    placeholder=" "
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    required
+                  />
+                  <span>Date</span>
+                </label>
               </div>
 
-              <textarea
-                placeholder="Description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
+              <label className="input-field">
+                <textarea
+                  placeholder=" "
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                />
+                <span>Description</span>
+              </label>
 
               <button className="primary-button" type="submit">
                 {editingExpense ? 'Save Changes' : 'Add Expense'}
@@ -778,12 +970,15 @@ const App = () => {
               </div>
 
               <div className="budget-details">
-                <input
-                  type="number"
-                  value={monthlyBudget}
-                  onChange={(e) => setMonthlyBudget(Number(e.target.value))}
-                  placeholder="Monthly Budget"
-                />
+                <label className="input-field">
+                  <input
+                    type="number"
+                    value={monthlyBudget}
+                    onChange={(e) => setMonthlyBudget(Number(e.target.value))}
+                    placeholder=" "
+                  />
+                  <span>Monthly Budget</span>
+                </label>
 
                 <p>Total Spent: <strong>₹ {totalSpent.toFixed(2)}</strong></p>
                 <p>Remaining: <strong>₹ {remainingBudget.toFixed(2)}</strong></p>
@@ -805,39 +1000,51 @@ const App = () => {
               </div>
             </div>
 
-            <input
-              type="text"
-              placeholder="Expense title"
-              value={splitForm.title}
-              onChange={(e) => setSplitForm({ ...splitForm, title: e.target.value })}
-              required
-            />
-
-            <div className="form-grid">
-              <input
-                type="number"
-                placeholder="Total amount"
-                value={splitForm.amount}
-                onChange={(e) => setSplitForm({ ...splitForm, amount: e.target.value })}
-                required
-              />
-
+            <label className="input-field">
               <input
                 type="text"
-                placeholder="Paid by"
-                value={splitForm.paidBy}
-                onChange={(e) => setSplitForm({ ...splitForm, paidBy: e.target.value })}
+                placeholder=" "
+                value={splitForm.title}
+                onChange={(e) => setSplitForm({ ...splitForm, title: e.target.value })}
                 required
               />
+              <span>Expense title</span>
+            </label>
+
+            <div className="form-grid">
+              <label className="input-field">
+                <input
+                  type="number"
+                  placeholder=" "
+                  value={splitForm.amount}
+                  onChange={(e) => setSplitForm({ ...splitForm, amount: e.target.value })}
+                  required
+                />
+                <span>Total amount</span>
+              </label>
+
+              <label className="input-field">
+                <input
+                  type="text"
+                  placeholder=" "
+                  value={splitForm.paidBy}
+                  onChange={(e) => setSplitForm({ ...splitForm, paidBy: e.target.value })}
+                  required
+                />
+                <span>Paid by</span>
+              </label>
             </div>
 
-            <input
-              type="text"
-              placeholder="Participants comma separated, e.g. Argav, Rohit, Aman"
-              value={splitForm.participants}
-              onChange={(e) => setSplitForm({ ...splitForm, participants: e.target.value })}
-              required
-            />
+            <label className="input-field">
+              <input
+                type="text"
+                placeholder=" "
+                value={splitForm.participants}
+                onChange={(e) => setSplitForm({ ...splitForm, participants: e.target.value })}
+                required
+              />
+              <span>Participants comma separated, e.g. Argav, Rohit, Aman</span>
+            </label>
 
             <button className="primary-button" type="submit">
               Split Now
